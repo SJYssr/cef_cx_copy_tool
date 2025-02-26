@@ -12,6 +12,7 @@ PVOID g_cef_on_key_event = nullptr;
 PVOID g_cef_on_load_end = nullptr;
 
 typedef int(CEF_EXPORT* cef_string_from_ptr_t)(const TCHAR*, size_t, cef_string_utf16_t*);
+cef_string_from_ptr_t func_cef_string_from_ptr = nullptr;
 
 void SetAsPopup(cef_window_info_t* window_info) {
     window_info->style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE;
@@ -22,8 +23,6 @@ void SetAsPopup(cef_window_info_t* window_info) {
     window_info->height = CW_USEDEFAULT;
 }
 
-cef_string_from_ptr_t func_cef_string_from_ptr = nullptr;
-
 int CEF_CALLBACK hook_cef_on_key_event(
     struct _cef_keyboard_handler_t* self,
     struct _cef_browser_t* browser,
@@ -32,14 +31,12 @@ int CEF_CALLBACK hook_cef_on_key_event(
 
     auto cef_browser_host = browser->get_host(browser);
 
-    if (event->type == KEYEVENT_RAWKEYDOWN) {
-        if (event->windows_key_code == 18) {  // Alt键打开开发者工具
-            cef_window_info_t windowInfo{};
-            cef_browser_settings_t settings{};
-            cef_point_t point{};
-            SetAsPopup(&windowInfo);
-            cef_browser_host->show_dev_tools(cef_browser_host, &windowInfo, 0, &settings, &point);
-        }
+    if (event->type == KEYEVENT_RAWKEYDOWN && event->windows_key_code == 18) {
+        cef_window_info_t windowInfo{};
+        cef_browser_settings_t settings{};
+        cef_point_t point{};
+        SetAsPopup(&windowInfo);
+        cef_browser_host->show_dev_tools(cef_browser_host, &windowInfo, 0, &settings, &point);
     }
 
     return reinterpret_cast<decltype(&hook_cef_on_key_event)>
@@ -64,117 +61,45 @@ void CEF_CALLBACK hook_cef_on_load_end(
     struct _cef_frame_t* frame,
     int httpStatusCode)
 {
-    (void)browser;
-    (void)self;
-
-    // 破解脚本
     string_t crack_script = TEXT(R"(
-    (function(){
-        let isAllowed = false;
-        const stateMarker = document.createElement('div');
-        
-        // 状态标记样式
-        stateMarker.style = `
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            background: ${isAllowed ? '#00ff00' : '#ff0000'};
-            z-index: 99999;
-            box-shadow: 0 0 5px rgba(0,0,0,0.3);
-        `;
-        document.body.appendChild(stateMarker);
+(function(){
+    const style = document.createElement('style');
+    style.textContent = `
+        * {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+        }
+        input, textarea {
+            user-select: text !important;
+            -webkit-user-modify: read-write !important;
+        }
+        ::selection {
+            background: #b5d6fd !important;
+        }`;
+    document.head.appendChild(style);
 
-        // 强化右键处理
-        document.addEventListener('contextmenu', function(e){
-            isAllowed = !isAllowed;
-            stateMarker.style.background = isAllowed ? '#00ff00' : '#ff0000';
-            e.preventDefault();
-            e.stopImmediatePropagation();
-        }, true);
+    document.body.contentEditable = true;
+    document.designMode = 'on';
 
-        // 动态事件控制器
-        const eventController = {
-            handleEvent(e) {
-                if(!isAllowed) {
-                    const target = e.target;
-                    // 排除滑块元素处理
-                    const isSlider = target.tagName === 'INPUT' && target.type === 'range';
-                    
-                    if(isSlider) return;
+    document.addEventListener('contextmenu', e => e.stopPropagation(), true);
+    window.addEventListener('contextmenu', e => e.stopPropagation(), true);
 
-                    switch(e.type) {
-                        case 'copy':
-                        case 'cut':
-                        case 'paste':
-                            e.preventDefault();
-                            break;
-                        case 'selectstart':
-                            e.preventDefault();
-                            break;
-                        case 'mousedown':
-                            // 保留基础事件处理能力
-                            if(target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-                            e.stopPropagation();
-                            break;
-                    }
-                }
-            }
-        };
+    const events = ['copy', 'cut', 'paste', 'selectstart'];
+    events.forEach(e => {
+        document.addEventListener(e, ev => ev.stopPropagation(), true);
+        window.addEventListener(e, ev => ev.stopPropagation(), true);
+    });
 
-        // 事件类型列表
-        const controlEvents = [
-            'copy', 'cut', 'paste', 
-            'selectstart', 'mousedown'
-        ];
-
-        // 注册事件监听
-        controlEvents.forEach(type => {
-            document.addEventListener(type, eventController, true);
-            window.addEventListener(type, eventController, true);
+    setInterval(() => {
+        document.querySelectorAll('*').forEach(el => {
+            el.style.userSelect = 'text';
+            el.style.webkitUserSelect = 'text';
         });
+    }, 1000);
 
-        // 样式强化（排除滑块元素）
-        const style = document.createElement('style');
-        style.textContent = `
-            *:not(input[type="range"]) {
-                user-select: ${isAllowed ? 'text' : 'none'} !important;
-                -webkit-user-select: ${isAllowed ? 'text' : 'none'} !important;
-            }
-            input[type="range"] {
-                user-select: auto !important;
-                -webkit-user-select: auto !important;
-            }
-            input, textarea {
-                -webkit-user-modify: read-write !important;
-                user-select: text !important;
-            }`;
-        document.head.appendChild(style);
-
-        // 定时刷新保护
-        setInterval(() => {
-            document.body.contentEditable = true;
-            document.designMode = 'on';
-            style.textContent = `
-                *:not(input[type="range"]) {
-                    user-select: ${isAllowed ? 'text' : 'none'} !important;
-                    -webkit-user-select: ${isAllowed ? 'text' : 'none'} !important;
-                }
-                input[type="range"] {
-                    user-select: auto !important;
-                    -webkit-user-select: auto !important;
-                }`;
-        }, 1500);
-
-        // 控制台静默
-        const consoleProxy = new Proxy(console, {
-            get: (t, p) => ['log','warn','error'].includes(p) ? () => {} : t[p]
-        });
-        Object.defineProperty(window, 'console', {value: consoleProxy});
-    })();
-    )");
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+})();
+)");
 
     cef_string_t eval{};
     cef_string_t url{};
@@ -232,23 +157,18 @@ BOOL APIENTRY InstallHook() {
 
 DWORD WINAPI ThreadProc(LPVOID lpThreadParameter)
 {
-    (void)lpThreadParameter;
-    HANDLE hProcess;
+    HANDLE hProcess = OpenProcess(
+        PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE,
+        FALSE,
+        GetCurrentProcessId()
+    );
 
-    PVOID addr1 = reinterpret_cast<PVOID>(0x00401000);
-    BYTE data1[] = { 0x90, 0x90, 0x90, 0x90 };
-
-    //
-    // 绕过VMP3.x 的内存保护
-    //
-    hProcess = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE, FALSE, GetCurrentProcessId());
-    if (hProcess)
-    {
-        WriteProcessMemory(hProcess, addr1, data1, sizeof(data1), NULL);
-
+    if (hProcess) {
+        BYTE nopPatch[] = { 0x90, 0x90, 0x90, 0x90 };
+        WriteProcessMemory(hProcess, (LPVOID)0x00401000, nopPatch, sizeof(nopPatch), NULL);
         CloseHandle(hProcess);
     }
 
-    OutputDebugString(InstallHook() ? TEXT("Hooked Successfully") : TEXT("Hooking failed"));
+    OutputDebugString(InstallHook() ? TEXT("Hook Success") : TEXT("Hook Failed"));
     return 0;
 }

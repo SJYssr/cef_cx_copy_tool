@@ -2,7 +2,6 @@
 ## 项目修改自 [kazutoiris](https://github.com/kazutoiris)的[cef-hook](https://github.com/kazutoiris/cef-hook)
 ## 可能一些功能无法实现，但也是有一些进展
 # 目前项目功能
-- 右上角小圆球显示当前是否破除选中文字和复制粘贴，绿色（允许），红色（禁止）
 - 破除复制粘贴限制
 - 破除选中文字限制
 - 可以复制粘贴题目

@@ -107,14 +107,28 @@ void CEF_CALLBACK hook_cef_on_load_end(
     frame->execute_java_script(frame, &eval, &url, 0);
 
     /////// 添加篡改猴脚本注入点 ///////
-    string_t tampermonkey_script = TEXT(R"(
-        // 这里放置你的篡改猴脚本
-        // 示例：alert('篡改猴脚本已加载');
-        (function() {
-            'use strict';
-            // 你的用户脚本代码...
-        })();
-    )");
+    string_t tampermonkey_script = TEXT(R"TAMPERMONKEY(
+/* 将您的篡改猴脚本粘贴在下方（保留上下包围标记）
+--------------------------------------------------
+注意：请确保脚本内容中没有 )TAMPERMONKEY 字符串
+-------------------------------------------------- */
+// ==UserScript==
+// @name         Your Script Name
+// @namespace    http://your-namespace/
+// @version      1.0
+// @description  Description
+// @author       You
+// @match        *://*/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+    // 您的代码写在这里...
+    console.log('Tampermonkey脚本已加载');
+})();
+/* 结束粘贴区域 */
+)TAMPERMONKEY");
 
     cef_string_t tm_eval{};
     func_cef_string_from_ptr(
@@ -123,8 +137,10 @@ void CEF_CALLBACK hook_cef_on_load_end(
         &tm_eval
     );
     frame->execute_java_script(frame, &tm_eval, &url, 0);
-}
     /// 如果不需要篡改猴脚本功能，可以将上面的代码删除 ///
+}
+
+
 struct _cef_load_handler_t* CEF_CALLBACK hook_cef_get_load_handler(
     struct _cef_client_t* self) {
     auto load_handler = reinterpret_cast<decltype(&hook_cef_get_load_handler)>

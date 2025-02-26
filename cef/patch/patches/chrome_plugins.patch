@@ -1,0 +1,253 @@
+diff --git chrome/browser/plugins/plugin_info_host_impl.cc chrome/browser/plugins/plugin_info_host_impl.cc
+index daf826ece047..615200c4b41c 100644
+--- chrome/browser/plugins/plugin_info_host_impl.cc
++++ chrome/browser/plugins/plugin_info_host_impl.cc
+@@ -18,6 +18,7 @@
+ #include "base/task_runner_util.h"
+ #include "base/threading/thread_task_runner_handle.h"
+ #include "build/build_config.h"
++#include "cef/libcef/features/features.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+ #include "chrome/browser/plugins/chrome_plugin_service_filter.h"
+@@ -55,6 +56,11 @@
+ #include "url/gurl.h"
+ #include "url/origin.h"
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/plugins/plugin_service_filter.h"
++#include "cef/libcef/common/extensions/extensions_util.h"
++#endif
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+ #include "components/guest_view/browser/guest_view_base.h"
+ #include "extensions/browser/extension_registry.h"
+@@ -101,6 +107,9 @@ bool IsPluginLoadingAccessibleResourceInWebView(
+     extensions::ExtensionRegistry* extension_registry,
+     int process_id,
+     const GURL& resource) {
++  if (!extension_registry)
++    return false;
++
+   extensions::WebViewRendererState* renderer_state =
+       extensions::WebViewRendererState::GetInstance();
+   std::string partition_id;
+@@ -130,12 +139,16 @@ bool IsPluginLoadingAccessibleResourceInWebView(
+ PluginInfoHostImpl::Context::Context(int render_process_id, Profile* profile)
+     : render_process_id_(render_process_id),
+       resource_context_(profile->GetResourceContext()),
+-#if BUILDFLAG(ENABLE_EXTENSIONS)
+-      extension_registry_(extensions::ExtensionRegistry::Get(profile)),
+-#endif
+       host_content_settings_map_(
+           HostContentSettingsMapFactory::GetForProfile(profile)),
+       plugin_prefs_(PluginPrefs::GetForProfile(profile)) {
++#if BUILDFLAG(ENABLE_EXTENSIONS)
++#if BUILDFLAG(ENABLE_CEF)
++  if (extensions::ExtensionsEnabled())
++#endif
++    extension_registry_ = extensions::ExtensionRegistry::Get(profile);
++#endif
++
+   allow_outdated_plugins_.Init(prefs::kPluginsAllowOutdated,
+                                profile->GetPrefs());
+   allow_outdated_plugins_.MoveToThread(
+@@ -234,6 +247,7 @@ void PluginInfoHostImpl::PluginsLoaded(
+         plugin_metadata->identifier(), &output->status);
+   }
+ 
++#if !BUILDFLAG(ENABLE_CEF)
+   if (output->status == chrome::mojom::PluginStatus::kNotFound) {
+     // Check to see if the component updater can fetch an implementation.
+     base::PostTaskAndReplyWithResult(
+@@ -245,7 +259,9 @@ void PluginInfoHostImpl::PluginsLoaded(
+         base::BindOnce(&PluginInfoHostImpl::ComponentPluginLookupDone, this,
+                        params, std::move(output), std::move(callback),
+                        std::move(plugin_metadata)));
+-  } else {
++  } else
++#endif  // !BUILDFLAG(ENABLE_CEF)
++  {
+     GetPluginInfoFinish(params, std::move(output), std::move(callback),
+                         std::move(plugin_metadata));
+   }
+@@ -258,6 +274,14 @@ void PluginInfoHostImpl::Context::DecidePluginStatus(
+     PluginMetadata::SecurityStatus security_status,
+     const std::string& plugin_identifier,
+     chrome::mojom::PluginStatus* status) const {
++#if BUILDFLAG(ENABLE_CEF)
++  // Don't override the user decision.
++  if (*status == chrome::mojom::PluginStatus::kBlocked ||
++      *status == chrome::mojom::PluginStatus::kDisabled) {
++    return;
++  }
++#endif
++
+   if (security_status == PluginMetadata::SECURITY_STATUS_FULLY_TRUSTED) {
+     *status = chrome::mojom::PluginStatus::kAllowed;
+     return;
+@@ -366,16 +390,36 @@ bool PluginInfoHostImpl::Context::FindEnabledPlugin(
+     return false;
+   }
+ 
++  const bool is_main_frame =
++      main_frame_origin.IsSameOriginWith(url::Origin::Create(url));
++
++#if BUILDFLAG(ENABLE_CEF)
++  CefPluginServiceFilter* filter = static_cast<CefPluginServiceFilter*>(
++      PluginService::GetInstance()->GetFilter());
++  DCHECK(filter);
++
++  size_t i = 0;
++  for (; i < matching_plugins.size(); ++i) {
++    if (filter->IsPluginAvailable(render_process_id_, render_frame_id,
++                                  resource_context_, url, is_main_frame,
++                                  main_frame_origin, &matching_plugins[i],
++                                  status)) {
++      break;
++    }
++  }
++#else  // !BUILDFLAG(ENABLE_CEF)
+   content::PluginServiceFilter* filter =
+       PluginService::GetInstance()->GetFilter();
+   size_t i = 0;
+   for (; i < matching_plugins.size(); ++i) {
+     if (!filter || filter->IsPluginAvailable(
+                        render_process_id_, render_frame_id, resource_context_,
+-                       url, main_frame_origin, &matching_plugins[i])) {
++                       url, is_main_frame, main_frame_origin,
++                       &matching_plugins[i])) {
+       break;
+     }
+   }
++#endif  // !BUILDFLAG(ENABLE_CEF)
+ 
+   // If we broke out of the loop, we have found an enabled plugin.
+   bool enabled = i < matching_plugins.size();
+diff --git chrome/browser/plugins/plugin_utils.cc chrome/browser/plugins/plugin_utils.cc
+index 01ea0ba7f0cb..2828896bbcad 100644
+--- chrome/browser/plugins/plugin_utils.cc
++++ chrome/browser/plugins/plugin_utils.cc
+@@ -5,6 +5,7 @@
+ #include "chrome/browser/plugins/plugin_utils.h"
+ 
+ #include "base/values.h"
++#include "cef/libcef/features/features.h"
+ #include "chrome/browser/profiles/profile_io_data.h"
+ #include "chrome/common/plugin_utils.h"
+ #include "components/content_settings/core/browser/host_content_settings_map.h"
+@@ -14,6 +15,11 @@
+ #include "url/gurl.h"
+ #include "url/origin.h"
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/resource_context.h"
++#include "cef/libcef/common/extensions/extensions_util.h"
++#endif
++
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
+ #include "extensions/browser/info_map.h"
+ #include "extensions/common/constants.h"
+@@ -180,10 +186,23 @@ PluginUtils::GetMimeTypeToExtensionIdMap(
+     content::ResourceContext* resource_context) {
+   base::flat_map<std::string, std::string> mime_type_to_extension_id_map;
+ #if BUILDFLAG(ENABLE_EXTENSIONS)
++
++#if BUILDFLAG(ENABLE_CEF)
++  CefResourceContext* context =
++      static_cast<CefResourceContext*>(resource_context);
++  bool profile_is_off_the_record = context->IsOffTheRecord();
++  const scoped_refptr<const extensions::InfoMap> extension_info_map(
++      context->GetExtensionInfoMap());
++  bool always_open_pdf_externally = !extensions::PdfExtensionEnabled();
++#else
+   ProfileIOData* io_data = ProfileIOData::FromResourceContext(resource_context);
+   bool profile_is_off_the_record = io_data->IsOffTheRecord();
+   const scoped_refptr<const extensions::InfoMap> extension_info_map(
+       io_data->GetExtensionInfoMap());
++  bool always_open_pdf_externally =
++      io_data->always_open_pdf_externally()->GetValue();
++#endif
++
+   std::vector<std::string> whitelist = MimeTypesHandler::GetMIMETypeWhitelist();
+   // Go through the white-listed extensions and try to use them to intercept
+   // the URL request.
+@@ -198,7 +217,7 @@ PluginUtils::GetMimeTypeToExtensionIdMap(
+     }
+ 
+     if (extension_id == extension_misc::kPdfExtensionId &&
+-        io_data->always_open_pdf_externally()->GetValue()) {
++        always_open_pdf_externally) {
+       continue;
+     }
+ 
+diff --git chrome/renderer/chrome_content_renderer_client.cc chrome/renderer/chrome_content_renderer_client.cc
+index 202376e2548e..15a7bd34cf48 100644
+--- chrome/renderer/chrome_content_renderer_client.cc
++++ chrome/renderer/chrome_content_renderer_client.cc
+@@ -758,6 +758,7 @@ WebPlugin* ChromeContentRendererClient::CreatePlugin(
+ 
+     if ((status == chrome::mojom::PluginStatus::kUnauthorized ||
+          status == chrome::mojom::PluginStatus::kBlocked) &&
++        observer &&
+         observer->IsPluginTemporarilyAllowed(identifier)) {
+       status = chrome::mojom::PluginStatus::kAllowed;
+     }
+@@ -942,7 +943,8 @@ WebPlugin* ChromeContentRendererClient::CreatePlugin(
+         render_frame->GetRemoteAssociatedInterfaces()->GetInterface(
+             &plugin_auth_host);
+         plugin_auth_host->BlockedUnauthorizedPlugin(group_name, identifier);
+-        observer->DidBlockContentType(content_type, group_name);
++        if (observer)
++          observer->DidBlockContentType(content_type, group_name);
+         break;
+       }
+       case chrome::mojom::PluginStatus::kBlocked: {
+@@ -951,7 +953,8 @@ WebPlugin* ChromeContentRendererClient::CreatePlugin(
+             l10n_util::GetStringFUTF16(IDS_PLUGIN_BLOCKED, group_name));
+         placeholder->AllowLoading();
+         RenderThread::Get()->RecordAction(UserMetricsAction("Plugin_Blocked"));
+-        observer->DidBlockContentType(content_type, group_name);
++        if (observer)
++          observer->DidBlockContentType(content_type, group_name);
+         break;
+       }
+       case chrome::mojom::PluginStatus::kBlockedByPolicy: {
+@@ -961,7 +964,8 @@ WebPlugin* ChromeContentRendererClient::CreatePlugin(
+                                        group_name));
+         RenderThread::Get()->RecordAction(
+             UserMetricsAction("Plugin_BlockedByPolicy"));
+-        observer->DidBlockContentType(content_type, group_name);
++        if (observer)
++          observer->DidBlockContentType(content_type, group_name);
+         break;
+       }
+       case chrome::mojom::PluginStatus::kBlockedNoLoading: {
+@@ -969,7 +973,8 @@ WebPlugin* ChromeContentRendererClient::CreatePlugin(
+             IDR_BLOCKED_PLUGIN_HTML,
+             l10n_util::GetStringFUTF16(IDS_PLUGIN_BLOCKED_NO_LOADING,
+                                        group_name));
+-        observer->DidBlockContentType(content_type, group_name);
++        if (observer)
++          observer->DidBlockContentType(content_type, group_name);
+         break;
+       }
+       case chrome::mojom::PluginStatus::kComponentUpdateRequired: {
+diff --git chrome/renderer/plugins/chrome_plugin_placeholder.cc chrome/renderer/plugins/chrome_plugin_placeholder.cc
+index fe074e5b99ac..5d19f37db3d0 100644
+--- chrome/renderer/plugins/chrome_plugin_placeholder.cc
++++ chrome/renderer/plugins/chrome_plugin_placeholder.cc
+@@ -357,8 +357,11 @@ void ChromePluginPlaceholder::OnBlockedContent(
+ 
+   if (status ==
+       content::RenderFrame::PeripheralContentStatus::CONTENT_STATUS_TINY) {
+-    ContentSettingsObserver::Get(render_frame())
+-        ->DidBlockContentType(CONTENT_SETTINGS_TYPE_PLUGINS, title_);
++    ContentSettingsObserver* observer =
++        ContentSettingsObserver::Get(render_frame());
++    if (observer) {
++      observer->DidBlockContentType(CONTENT_SETTINGS_TYPE_PLUGINS, title_);
++    }
+   }
+ 
+   std::string message = base::StringPrintf(

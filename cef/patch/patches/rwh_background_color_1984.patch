@@ -1,0 +1,37 @@
+diff --git content/browser/renderer_host/render_widget_host_view_aura.cc content/browser/renderer_host/render_widget_host_view_aura.cc
+index 8ab45cb1bb32..ddf13a935ee2 100644
+--- content/browser/renderer_host/render_widget_host_view_aura.cc
++++ content/browser/renderer_host/render_widget_host_view_aura.cc
+@@ -742,10 +742,12 @@ gfx::Rect RenderWidgetHostViewAura::GetViewBounds() {
+ void RenderWidgetHostViewAura::UpdateBackgroundColor() {
+   DCHECK(GetBackgroundColor());
+ 
+-  SkColor color = *GetBackgroundColor();
+-  bool opaque = SkColorGetA(color) == SK_AlphaOPAQUE;
+-  window_->layer()->SetFillsBoundsOpaquely(opaque);
+-  window_->layer()->SetColor(color);
++  if (window_) {
++    SkColor color = *GetBackgroundColor();
++    bool opaque = SkColorGetA(color) == SK_AlphaOPAQUE;
++    window_->layer()->SetFillsBoundsOpaquely(opaque);
++    window_->layer()->SetColor(color);
++  }
+ }
+ 
+ void RenderWidgetHostViewAura::WindowTitleChanged() {
+@@ -2108,6 +2110,15 @@ void RenderWidgetHostViewAura::CreateAuraWindow(aura::client::WindowType type) {
+   if (frame_sink_id_.is_valid())
+     window_->SetEmbedFrameSinkId(frame_sink_id_);
+ 
++  // Do this after |window_| is created to avoid crashes on Win10.
++  // See https://crbug.com/761389.
++  RenderViewHost* rvh = RenderViewHost::From(host_);
++  if (rvh) {
++    // TODO(mostynb): actually use prefs.  Landing this as a separate CL
++    // first to rebaseline some unreliable layout tests.
++    ignore_result(rvh->GetWebkitPreferences());
++  }
++
+   if (!features::IsMultiProcessMash())
+     return;
+ 

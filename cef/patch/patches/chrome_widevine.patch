@@ -1,0 +1,26 @@
+diff --git chrome/common/chrome_content_client.cc chrome/common/chrome_content_client.cc
+index 406683776819..d8bf3372dd60 100644
+--- chrome/common/chrome_content_client.cc
++++ chrome/common/chrome_content_client.cc
+@@ -97,7 +97,8 @@
+ // Registers Widevine CDM if Widevine is enabled, the Widevine CDM is
+ // bundled and not a component. When the Widevine CDM is a component, it is
+ // registered in widevine_cdm_component_installer.cc.
+-#if BUILDFLAG(BUNDLE_WIDEVINE_CDM) && !BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT)
++#if BUILDFLAG(BUNDLE_WIDEVINE_CDM) && !BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT) && \
++    defined(WIDEVINE_CDM_VERSION_STRING)
+ #define REGISTER_BUNDLED_WIDEVINE_CDM
+ #include "third_party/widevine/cdm/widevine_cdm_common.h"  // nogncheck
+ // TODO(crbug.com/663554): Needed for WIDEVINE_CDM_VERSION_STRING. Support
+diff --git third_party/widevine/cdm/BUILD.gn third_party/widevine/cdm/BUILD.gn
+index 27b3e9150832..bf5b96c5f69f 100644
+--- third_party/widevine/cdm/BUILD.gn
++++ third_party/widevine/cdm/BUILD.gn
+@@ -5,6 +5,7 @@
+ import("//build/buildflag_header.gni")
+ import("//build/config/chrome_build.gni")
+ import("//build/config/features.gni")
++import("//cef/libcef/features/features.gni")
+ import("//media/cdm/library_cdm/cdm_paths.gni")
+ import("//media/media_options.gni")
+ import("//third_party/widevine/cdm/widevine.gni")

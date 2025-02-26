@@ -1,0 +1,147 @@
+diff --git content/app/content_service_manager_main_delegate.h content/app/content_service_manager_main_delegate.h
+index 864f2a5a315a..78b71d523e86 100644
+--- content/app/content_service_manager_main_delegate.h
++++ content/app/content_service_manager_main_delegate.h
+@@ -18,7 +18,8 @@ namespace content {
+ 
+ class ContentMainRunnerImpl;
+ 
+-class ContentServiceManagerMainDelegate : public service_manager::MainDelegate {
++class CONTENT_EXPORT ContentServiceManagerMainDelegate :
++    public service_manager::MainDelegate {
+  public:
+   explicit ContentServiceManagerMainDelegate(const ContentMainParams& params);
+   ~ContentServiceManagerMainDelegate() override;
+diff --git content/browser/devtools/devtools_instrumentation.h content/browser/devtools/devtools_instrumentation.h
+index 605e388043ac..4566dd95f0b8 100644
+--- content/browser/devtools/devtools_instrumentation.h
++++ content/browser/devtools/devtools_instrumentation.h
+@@ -12,6 +12,7 @@
+ #include <vector>
+ 
+ #include "base/optional.h"
++#include "content/common/content_export.h"
+ #include "content/common/navigation_params.mojom.h"
+ #include "content/public/browser/certificate_request_result_type.h"
+ #include "services/network/public/mojom/url_loader_factory.mojom.h"
+@@ -49,7 +50,7 @@ void ApplyNetworkRequestOverrides(FrameTreeNode* frame_tree_node,
+                                   mojom::BeginNavigationParams* begin_params,
+                                   bool* report_raw_headers);
+ 
+-bool WillCreateURLLoaderFactory(
++CONTENT_EXPORT bool WillCreateURLLoaderFactory(
+     RenderFrameHostImpl* rfh,
+     bool is_navigation,
+     bool is_download,
+diff --git content/browser/renderer_host/input/synthetic_gesture_target_base.h content/browser/renderer_host/input/synthetic_gesture_target_base.h
+index 33a2d55e47ac..1700b3df2468 100644
+--- content/browser/renderer_host/input/synthetic_gesture_target_base.h
++++ content/browser/renderer_host/input/synthetic_gesture_target_base.h
+@@ -8,6 +8,7 @@
+ #include "base/macros.h"
+ #include "base/time/time.h"
+ #include "content/browser/renderer_host/input/synthetic_gesture_target.h"
++#include "content/common/content_export.h"
+ 
+ namespace ui {
+ class LatencyInfo;
+@@ -24,7 +25,8 @@ namespace content {
+ 
+ class RenderWidgetHostImpl;
+ 
+-class SyntheticGestureTargetBase : public SyntheticGestureTarget {
++class CONTENT_EXPORT SyntheticGestureTargetBase :
++    public SyntheticGestureTarget {
+  public:
+   explicit SyntheticGestureTargetBase(RenderWidgetHostImpl* host);
+   ~SyntheticGestureTargetBase() override;
+diff --git content/common/content_switches_internal.h content/common/content_switches_internal.h
+index 886bdf0edf8f..1d714000cce5 100644
+--- content/common/content_switches_internal.h
++++ content/common/content_switches_internal.h
+@@ -15,7 +15,7 @@ class CommandLine;
+ 
+ namespace content {
+ 
+-bool IsPinchToZoomEnabled();
++CONTENT_EXPORT bool IsPinchToZoomEnabled();
+ 
+ blink::mojom::V8CacheOptions GetV8CacheOptions();
+ 
+diff --git third_party/blink/renderer/controller/BUILD.gn third_party/blink/renderer/controller/BUILD.gn
+index c62ad20e5ef9..6e43db6a2fda 100644
+--- third_party/blink/renderer/controller/BUILD.gn
++++ third_party/blink/renderer/controller/BUILD.gn
+@@ -26,6 +26,7 @@ jumbo_component("controller") {
+ 
+   configs += [
+     "//build/config/compiler:wexit_time_destructors",
++    "//cef/libcef/features:config",
+     "//third_party/blink/renderer:config",
+     "//third_party/blink/renderer:inside_blink",
+     "//third_party/blink/renderer:non_test_config",
+@@ -44,6 +45,8 @@ jumbo_component("controller") {
+     "dev_tools_frontend_impl.h",
+     "memory_usage_monitor.cc",
+     "memory_usage_monitor.h",
++    "//cef/libcef/renderer/blink_glue.cc",
++    "//cef/libcef/renderer/blink_glue.h",
+   ]
+ 
+   if (is_android) {
+diff --git ui/events/keycodes/BUILD.gn ui/events/keycodes/BUILD.gn
+index 97e5fd499c81..8508a8fbcc8e 100644
+--- ui/events/keycodes/BUILD.gn
++++ ui/events/keycodes/BUILD.gn
+@@ -18,6 +18,8 @@ jumbo_source_set("xkb") {
+     "//ui/base:buildflags",
+   ]
+ 
++  defines = [ "KEYCODES_X_IMPLEMENTATION" ]
++
+   deps = [
+     "//base",
+     "//ui/events:dom_keycode_converter",
+diff --git ui/events/keycodes/keyboard_code_conversion_xkb.h ui/events/keycodes/keyboard_code_conversion_xkb.h
+index a1f9b78704fb..c7d3558251d9 100644
+--- ui/events/keycodes/keyboard_code_conversion_xkb.h
++++ ui/events/keycodes/keyboard_code_conversion_xkb.h
+@@ -9,6 +9,7 @@
+ 
+ #include "base/strings/string16.h"
+ #include "ui/events/keycodes/dom/dom_key.h"
++#include "ui/events/keycodes/keycodes_x_export.h"
+ #include "ui/events/keycodes/xkb_keysym.h"
+ 
+ namespace ui {
+@@ -24,7 +25,7 @@ DomKey NonPrintableXKeySymToDomKey(xkb_keysym_t keysym);
+ // base::char16 DeadXKeySymToCombiningCharacter(xkb_keysym_t keysym);
+ 
+ // Return the DomKey determined by the XKB layout result (keysym, character).
+-DomKey XKeySymToDomKey(xkb_keysym_t keysym, base::char16 character);
++KEYCODES_X_EXPORT DomKey XKeySymToDomKey(xkb_keysym_t keysym, base::char16 character);
+ 
+ }  // namespace ui
+ 
+diff --git ui/events/keycodes/keysym_to_unicode.h ui/events/keycodes/keysym_to_unicode.h
+index a7983d179832..2bbee48e57ac 100644
+--- ui/events/keycodes/keysym_to_unicode.h
++++ ui/events/keycodes/keysym_to_unicode.h
+@@ -5,6 +5,8 @@
+ #ifndef UI_EVENTS_KEYCODES_KEYSYM_TO_UNICODE_H_
+ #define UI_EVENTS_KEYCODES_KEYSYM_TO_UNICODE_H_
+ 
++#include "ui/events/keycodes/keycodes_x_export.h"
++
+ #include <stdint.h>
+ 
+ namespace ui {
+@@ -13,7 +15,7 @@ namespace ui {
+ // |keysym| doesn't represent a printable character, returns zero.  We don't
+ // support characters outside the Basic Plane, and this function returns zero
+ // in that case.
+-uint16_t GetUnicodeCharacterFromXKeySym(unsigned long keysym);
++KEYCODES_X_EXPORT uint16_t GetUnicodeCharacterFromXKeySym(unsigned long keysym);
+ 
+ }  // namespace ui
+ 

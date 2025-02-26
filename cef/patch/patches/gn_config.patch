@@ -1,0 +1,150 @@
+diff --git .gn .gn
+index 2bccf9d2b12c..39ce25e36c22 100644
+--- .gn
++++ .gn
+@@ -664,6 +664,8 @@ exec_script_whitelist =
+       # in the Chromium repo outside of //build.
+       "//build_overrides/build.gni",
+ 
++      "//cef/BUILD.gn",
++
+       # TODO(dgn): Layer violation but breaks the build otherwise, see
+       # https://crbug.com/474506.
+       "//clank/java/BUILD.gn",
+diff --git BUILD.gn BUILD.gn
+index 2d6f3315e687..405ddd14fab6 100644
+--- BUILD.gn
++++ BUILD.gn
+@@ -187,6 +187,7 @@ group("gn_all") {
+ 
+   if (!is_ios && !is_fuchsia) {
+     deps += [
++      "//cef",
+       "//chrome/test:telemetry_perf_unittests",
+       "//chrome/test:unit_tests",
+       "//components:components_browsertests",
+diff --git build/config/win/visual_studio_version.gni build/config/win/visual_studio_version.gni
+index 982fbe8d3f0d..e757be4688f1 100644
+--- build/config/win/visual_studio_version.gni
++++ build/config/win/visual_studio_version.gni
+@@ -12,9 +12,8 @@ declare_args() {
+   # Currently always "2015".
+   visual_studio_version = ""
+ 
+-  # Directory of the Windows driver kit. If visual_studio_path is empty, this
+-  # will be auto-filled.
+-  wdk_path = ""
++  # Path to Visual Studio runtime libraries.
++  visual_studio_runtime_dirs = ""
+ 
+   # Full path to the Windows SDK, not including a backslash at the end.
+   # This value is the default location, override if you have a different
+@@ -28,12 +27,11 @@ if (visual_studio_path == "") {
+   visual_studio_path = toolchain_data.vs_path
+   windows_sdk_path = toolchain_data.sdk_path
+   visual_studio_version = toolchain_data.vs_version
+-  wdk_path = toolchain_data.wdk_dir
+   visual_studio_runtime_dirs = toolchain_data.runtime_dirs
+ } else {
+   assert(visual_studio_version != "",
+          "You must set the visual_studio_version if you set the path")
+-  assert(wdk_path != "",
+-         "You must set the wdk_path if you set the visual studio path")
+-  visual_studio_runtime_dirs = []
++  assert(visual_studio_runtime_dirs != "",
++         "You must set the visual_studio_runtime_dirs if you set the visual " +
++         "studio path")
+ }
+diff --git build/toolchain/win/setup_toolchain.py build/toolchain/win/setup_toolchain.py
+index ef8aeda56458..5b7f057311b9 100644
+--- build/toolchain/win/setup_toolchain.py
++++ build/toolchain/win/setup_toolchain.py
+@@ -136,22 +136,25 @@ def _LoadToolchainEnv(cpu, sdk_dir, target_store):
+       # variable.
+       if 'VSINSTALLDIR' in os.environ:
+         del os.environ['VSINSTALLDIR']
+-      other_path = os.path.normpath(os.path.join(
++      script_path = os.path.normpath(os.path.join(
+                                         os.environ['GYP_MSVS_OVERRIDE_PATH'],
+                                         'VC/Auxiliary/Build/vcvarsall.bat'))
+-      if not os.path.exists(other_path):
+-        raise Exception('%s is missing - make sure VC++ tools are installed.' %
+-                        script_path)
+-      script_path = other_path
+-    cpu_arg = "amd64"
+-    if (cpu != 'x64'):
+-      # x64 is default target CPU thus any other CPU requires a target set
+-      cpu_arg += '_' + cpu
+-    args = [script_path, cpu_arg]
+-    # Store target must come before any SDK version declaration
+-    if (target_store):
+-      args.append(['store'])
+-    variables = _LoadEnvFromBat(args)
++    if os.path.exists(script_path):
++      cpu_arg = "amd64"
++      if (cpu != 'x64'):
++        # x64 is default target CPU thus any other CPU requires a target set
++        cpu_arg += '_' + cpu
++      args = [script_path, cpu_arg]
++      # Store target must come before any SDK version declaration
++      if (target_store):
++        args.append(['store'])
++      variables = _LoadEnvFromBat(args)
++    else:
++      variables = []
++      for k in sorted(os.environ.keys()):
++        variables.append('%s=%s' % (str(k), str(os.environ[k])))
++      variables = '\n'.join(variables)
++
+   return _ExtractImportantEnvironment(variables)
+ 
+ 
+diff --git build/vs_toolchain.py build/vs_toolchain.py
+index 0ce237fe1323..6201bbba992c 100755
+--- build/vs_toolchain.py
++++ build/vs_toolchain.py
+@@ -78,11 +78,18 @@ def SetEnvironmentAndGetRuntimeDllDirs():
+     runtime_path = os.path.pathsep.join(vs_runtime_dll_dirs)
+     os.environ['PATH'] = runtime_path + os.path.pathsep + os.environ['PATH']
+   elif sys.platform == 'win32' and not depot_tools_win_toolchain:
++    has_override_path = True
+     if not 'GYP_MSVS_OVERRIDE_PATH' in os.environ:
++      has_override_path = False
+       os.environ['GYP_MSVS_OVERRIDE_PATH'] = DetectVisualStudioPath()
+     if not 'GYP_MSVS_VERSION' in os.environ:
+       os.environ['GYP_MSVS_VERSION'] = GetVisualStudioVersion()
+ 
++    if has_override_path:
++      # Don't attempt to copy DLLs when using a custom toolchain.
++      # The DLLs should already be discoverable via the PATH env variable.
++      return None
++
+     # When using an installed toolchain these files aren't needed in the output
+     # directory in order to run binaries locally, but they are needed in order
+     # to create isolates or the mini_installer. Copying them to the output
+diff --git chrome/chrome_paks.gni chrome/chrome_paks.gni
+index dc766a29cc34..97b47d0538e4 100644
+--- chrome/chrome_paks.gni
++++ chrome/chrome_paks.gni
+@@ -265,7 +265,7 @@ template("chrome_paks") {
+     }
+ 
+     input_locales = locales
+-    output_dir = "${invoker.output_dir}/locales"
++    output_dir = "${invoker.output_dir}/chrome/locales"
+ 
+     if (is_mac) {
+       output_locales = locales_as_mac_outputs
+diff --git chrome/installer/mini_installer/BUILD.gn chrome/installer/mini_installer/BUILD.gn
+index 397c151b160b..adfc8c0e27b2 100644
+--- chrome/installer/mini_installer/BUILD.gn
++++ chrome/installer/mini_installer/BUILD.gn
+@@ -134,7 +134,7 @@ template("generate_mini_installer") {
+     inputs = [
+       "$chrome_dll_file",
+       "$root_out_dir/chrome.exe",
+-      "$root_out_dir/locales/en-US.pak",
++      "$root_out_dir/chrome/locales/en-US.pak",
+       "$root_out_dir/setup.exe",
+       "//chrome/tools/build/win/makecab.py",
+       release_file,

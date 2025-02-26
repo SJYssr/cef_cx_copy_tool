@@ -1,0 +1,13 @@
+diff --git chrome/browser/font_family_cache.h chrome/browser/font_family_cache.h
+index 36577f32fba3..a45e9230e6e5 100644
+--- chrome/browser/font_family_cache.h
++++ chrome/browser/font_family_cache.h
+@@ -21,6 +21,8 @@ class Profile;
+ 
+ FORWARD_DECLARE_TEST(FontFamilyCacheTest, Caching);
+ 
++extern const char kFontFamilyCacheKey[];
++
+ // Caches font family preferences associated with a PrefService. This class
+ // relies on the assumption that each concatenation of map_name + '.' + script
+ // is a unique string. It also relies on the assumption that the (const char*)

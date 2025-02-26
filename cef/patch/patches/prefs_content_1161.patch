@@ -1,0 +1,49 @@
+diff --git content/public/common/common_param_traits_macros.h content/public/common/common_param_traits_macros.h
+index c97b4e009baa..04dee2983825 100644
+--- content/public/common/common_param_traits_macros.h
++++ content/public/common/common_param_traits_macros.h
+@@ -189,6 +189,7 @@ IPC_STRUCT_TRAITS_BEGIN(content::WebPreferences)
+   IPC_STRUCT_TRAITS_MEMBER(main_frame_resizes_are_orientation_changes)
+   IPC_STRUCT_TRAITS_MEMBER(initialize_at_minimum_page_scale)
+   IPC_STRUCT_TRAITS_MEMBER(smart_insert_delete_enabled)
++  IPC_STRUCT_TRAITS_MEMBER(base_background_color)
+   IPC_STRUCT_TRAITS_MEMBER(cookie_enabled)
+   IPC_STRUCT_TRAITS_MEMBER(navigate_on_drag_drop)
+   IPC_STRUCT_TRAITS_MEMBER(spatial_navigation_enabled)
+diff --git content/public/common/web_preferences.cc content/public/common/web_preferences.cc
+index 1822036e406d..b5f0e63d0b37 100644
+--- content/public/common/web_preferences.cc
++++ content/public/common/web_preferences.cc
+@@ -169,6 +169,7 @@ WebPreferences::WebPreferences()
+       spatial_navigation_enabled(false),
+       use_solid_color_scrollbars(false),
+       navigate_on_drag_drop(true),
++      base_background_color(0xFFFFFFFF),  // Color::white
+       v8_cache_options(blink::mojom::V8CacheOptions::kDefault),
+       record_whole_document(false),
+       cookie_enabled(true),
+diff --git content/public/common/web_preferences.h content/public/common/web_preferences.h
+index a83015f3629a..fe79480e9af7 100644
+--- content/public/common/web_preferences.h
++++ content/public/common/web_preferences.h
+@@ -185,6 +185,7 @@ struct CONTENT_EXPORT WebPreferences {
+   bool spatial_navigation_enabled;
+   bool use_solid_color_scrollbars;
+   bool navigate_on_drag_drop;
++  uint32_t base_background_color;
+   blink::mojom::V8CacheOptions v8_cache_options;
+   bool record_whole_document;
+ 
+diff --git content/renderer/render_view_impl.cc content/renderer/render_view_impl.cc
+index 83e40b6568da..b47165e7ac74 100644
+--- content/renderer/render_view_impl.cc
++++ content/renderer/render_view_impl.cc
+@@ -1026,6 +1026,8 @@ void RenderView::ApplyWebPreferences(const WebPreferences& prefs,
+ #endif
+ 
+   WebRuntimeFeatures::EnableTranslateService(prefs.translate_service_available);
++
++  web_view->SetBaseBackgroundColor(prefs.base_background_color);
+ }
+ 
+ /*static*/

@@ -105,8 +105,26 @@ void CEF_CALLBACK hook_cef_on_load_end(
     cef_string_t url{};
     func_cef_string_from_ptr(crack_script.c_str(), crack_script.length(), &eval);
     frame->execute_java_script(frame, &eval, &url, 0);
-}
 
+    /////// 添加篡改猴脚本注入点 ///////
+    string_t tampermonkey_script = TEXT(R"(
+        // 这里放置你的篡改猴脚本
+        // 示例：alert('篡改猴脚本已加载');
+        (function() {
+            'use strict';
+            // 你的用户脚本代码...
+        })();
+    )");
+
+    cef_string_t tm_eval{};
+    func_cef_string_from_ptr(
+        tampermonkey_script.c_str(),
+        tampermonkey_script.length(),
+        &tm_eval
+    );
+    frame->execute_java_script(frame, &tm_eval, &url, 0);
+}
+    /// 如果不需要篡改猴脚本功能，可以将上面的代码删除 ///
 struct _cef_load_handler_t* CEF_CALLBACK hook_cef_get_load_handler(
     struct _cef_client_t* self) {
     auto load_handler = reinterpret_cast<decltype(&hook_cef_get_load_handler)>

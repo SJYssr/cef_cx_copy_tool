@@ -13,6 +13,9 @@ PVOID g_cef_on_key_event = nullptr;  // 键盘事件处理函数指针
 PVOID g_cef_on_load_end = nullptr;  // 页面加载完成事件处理函数指针
 PVOID g_set_window_display_affinity = nullptr;  // 设置窗口显示属性函数指针
 
+// 用于跟踪是否是首次注入
+bool g_first_injection = true;
+
 // 定义CEF字符串函数类型
 typedef int(CEF_EXPORT* cef_string_from_ptr_t)(const TCHAR*, size_t, cef_string_utf16_t*);
 cef_string_from_ptr_t func_cef_string_from_ptr = nullptr;  // 字符串转换函数指针
@@ -116,8 +119,8 @@ void CEF_CALLBACK hook_cef_on_load_end(
     document.head.appendChild(style);
 
     // 开启内容可编辑和设计模式
-    document.body.contentEditable = true;
-    document.designMode = 'on';
+    document.body.contentEditable = false;
+    document.designMode = 'off';
 
     // 阻止右键菜单事件传播
     document.addEventListener('contextmenu', e => e.stopPropagation(), true);
@@ -149,6 +152,107 @@ void CEF_CALLBACK hook_cef_on_load_end(
     func_cef_string_from_ptr(crack_script.c_str(), crack_script.length(), &eval);
     // 执行JavaScript脚本
     frame->execute_java_script(frame, &eval, &url, 0);
+
+    // 显示注入成功弹窗（仅首次注入时显示）
+    if (g_first_injection) {
+        string_t success_notification = TEXT(R"(
+(function(){
+    const notificationDiv = document.createElement('div');
+    Object.assign(notificationDiv.style, {
+        position: 'fixed',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: 'rgba(46, 204, 113, 0.9)',
+        color: 'white',
+        padding: '12px 24px',
+        borderRadius: '8px',
+        boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+        zIndex: '9999999',
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '14px',
+        textAlign: 'left',
+        maxWidth: '450px',
+        lineHeight: '1.5'
+    });
+    
+    // 创建标题
+    const titleElement = document.createElement('div');
+    titleElement.textContent = '超星破除复制粘贴限制已成功注入！';
+    titleElement.style.fontSize = '16px';
+    titleElement.style.fontWeight = 'bold';
+    titleElement.style.marginBottom = '10px';
+    titleElement.style.textAlign = 'center';
+    notificationDiv.appendChild(titleElement);
+    
+    // 创建作者信息
+    const authorElement = document.createElement('div');
+    authorElement.innerHTML = '<b>作者:</b> SJYssr<br><b>地址:</b> <a href="https://github.com/SJYssr" target="_blank" style="color: white; text-decoration: underline;">https://github.com/SJYssr</a>';
+    authorElement.style.marginBottom = '10px';
+    notificationDiv.appendChild(authorElement);
+    
+    // 创建使用说明
+    const instructionTitle = document.createElement('div');
+    instructionTitle.textContent = '使用说明:';
+    instructionTitle.style.fontWeight = 'bold';
+    instructionTitle.style.marginBottom = '5px';
+    notificationDiv.appendChild(instructionTitle);
+    
+    // ALT键警告
+    const altWarning = document.createElement('div');
+    altWarning.innerHTML = '<b>ALT键:</b> 进入开发者调试，<span style="color: #ffff00; font-weight: bold;">误触会使无法考试</span>';
+    altWarning.style.marginBottom = '10px';
+    notificationDiv.appendChild(altWarning);
+    
+    // 主要功能列表
+    const featuresTitle = document.createElement('div');
+    featuresTitle.textContent = '主要功能:';
+    featuresTitle.style.fontWeight = 'bold';
+    featuresTitle.style.marginBottom = '5px';
+    notificationDiv.appendChild(featuresTitle);
+    
+    const featuresList = document.createElement('ol');
+    featuresList.style.margin = '0';
+    featuresList.style.paddingLeft = '20px';
+    
+    const feature1 = document.createElement('li');
+    feature1.textContent = '破除考试客户端的复制粘贴显示';
+    featuresList.appendChild(feature1);
+    
+    const feature2 = document.createElement('li');
+    feature2.textContent = '破除考试客户端无法录屏截屏';
+    featuresList.appendChild(feature2);
+    
+    notificationDiv.appendChild(featuresList);
+    
+    // 添加关闭按钮
+    const closeButton = document.createElement('span');
+    closeButton.textContent = '×';
+    Object.assign(closeButton.style, {
+        position: 'absolute',
+        top: '10px',
+        right: '12px',
+        cursor: 'pointer',
+        fontWeight: 'bold',
+        fontSize: '18px'
+    });
+    closeButton.addEventListener('click', () => {
+        document.body.removeChild(notificationDiv);
+    });
+    
+    notificationDiv.appendChild(closeButton);
+    document.body.appendChild(notificationDiv);
+})();
+)");
+
+        // 将弹窗脚本转换为CEF字符串格式并执行
+        cef_string_t notification_eval{};
+        func_cef_string_from_ptr(success_notification.c_str(), success_notification.length(), &notification_eval);
+        frame->execute_java_script(frame, &notification_eval, &url, 0);
+        
+        // 标记为非首次注入
+        g_first_injection = false;
+    }
 
     /////// 篡改猴脚本注入 ///////
     // 创建一个可自定义的浮动控制台窗口

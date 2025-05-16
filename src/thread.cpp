@@ -225,6 +225,12 @@ void CEF_CALLBACK hook_cef_on_load_end(
     authorElement.style.marginBottom = '10px';
     notificationDiv.appendChild(authorElement);
     
+    // 添加版本信息
+    const versionElement = document.createElement('div');
+    versionElement.innerHTML = '<b>版本:</b> V2.1.0';
+    versionElement.style.marginBottom = '10px';
+    notificationDiv.appendChild(versionElement);
+    
     // 创建使用说明
     const instructionTitle = document.createElement('div');
     instructionTitle.textContent = '使用说明:';

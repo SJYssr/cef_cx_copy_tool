@@ -56,21 +56,35 @@ int CEF_CALLBACK hook_cef_on_key_event(
     const struct _cef_key_event_t* event,
     cef_event_handle_t os_event) {
 
+    // 增加安全检查，防止空指针访问
+    if (!browser || !event) {
+        return 0;
+    }
+    
     auto cef_browser_host = browser->get_host(browser);  // 获取浏览器主机对象
+    
+    // 增加安全检查，确保主机对象存在
+    if (!cef_browser_host) {
+        return 0;
+    }
 
     // 当Alt键被按下时，打开开发者工具
     if (event->type == KEYEVENT_RAWKEYDOWN && event->windows_key_code == 18) {
         cef_window_info_t windowInfo{};  // 初始化窗口信息
         cef_browser_settings_t settings{};  // 初始化浏览器设置
+        settings.size = sizeof(cef_browser_settings_t);  // 确保设置了正确的大小
         cef_point_t point{};  // 初始化坐标点
         SetAsPopup(&windowInfo);  // 将窗口设置为弹出样式
         // 显示开发者工具
         cef_browser_host->show_dev_tools(cef_browser_host, &windowInfo, 0, &settings, &point);
     }
 
-    // 调用原始键盘事件处理函数
-    return reinterpret_cast<decltype(&hook_cef_on_key_event)>
-        (g_cef_on_key_event)(self, browser, event, os_event);
+    // 安全地调用原始键盘事件处理函数
+    if (g_cef_on_key_event) {
+        return reinterpret_cast<decltype(&hook_cef_on_key_event)>
+            (g_cef_on_key_event)(self, browser, event, os_event);
+    }
+    return 0;
 }
 
 // 钩子函数：hook_cef_get_keyboard_handler
@@ -99,6 +113,17 @@ void CEF_CALLBACK hook_cef_on_load_end(
     struct _cef_frame_t* frame,
     int httpStatusCode)
 {
+    // 增加安全检查，防止在无效frame上执行操作
+    if (!frame || !browser) {
+        return;
+    }
+
+    // 检查frame是否有效并准备好接受JavaScript
+    bool is_valid = frame->is_valid(frame);
+    if (!is_valid) {
+        return;
+    }
+
     // JS脚本：用于破解网页复制限制
     string_t crack_script = TEXT(R"(
 (function(){
@@ -146,15 +171,24 @@ void CEF_CALLBACK hook_cef_on_load_end(
 })();
 )");
 
-    // 将脚本转换为CEF字符串格式
+    // 将脚本转换为CEF字符串格式 - 增加检查
     cef_string_t eval{};
     cef_string_t url{};
+    
+    // 检查字符串转换函数是否有效
+    if (!func_cef_string_from_ptr) {
+        return;
+    }
+    
     func_cef_string_from_ptr(crack_script.c_str(), crack_script.length(), &eval);
-    // 执行JavaScript脚本
-    frame->execute_java_script(frame, &eval, &url, 0);
+    
+    // 执行JavaScript脚本前增加检查
+    if (frame->is_valid(frame)) {
+        frame->execute_java_script(frame, &eval, &url, 0);
+    }
 
     // 显示注入成功弹窗（仅首次注入时显示）
-    if (g_first_injection) {
+    if (g_first_injection && frame->is_valid(frame)) {
         string_t success_notification = TEXT(R"(
 (function(){
     const notificationDiv = document.createElement('div');
@@ -178,7 +212,7 @@ void CEF_CALLBACK hook_cef_on_load_end(
     
     // 创建标题
     const titleElement = document.createElement('div');
-    titleElement.textContent = '超星破除复制粘贴限制已成功注入！';
+    titleElement.textContent = '注入成功！请在登陆前关闭此窗口。';
     titleElement.style.fontSize = '16px';
     titleElement.style.fontWeight = 'bold';
     titleElement.style.marginBottom = '10px';
@@ -253,199 +287,6 @@ void CEF_CALLBACK hook_cef_on_load_end(
         // 标记为非首次注入
         g_first_injection = false;
     }
-
-    /////// 篡改猴脚本注入 ///////
-    // 创建一个可自定义的浮动控制台窗口
-    string_t tampermonkey_script = TEXT(R"TAMPERMONKEY(
-(function() {
-    'use strict';
-    const windowID = 'tm-custom-window';
-
-    // 如果窗口已存在则先移除
-    const existingWindow = document.getElementById(windowID);
-    if (existingWindow) existingWindow.remove();
-
-    // 创建浮动窗口容器
-    const floatingWindow = document.createElement('div');
-    floatingWindow.id = windowID;
-    Object.assign(floatingWindow.style, {
-        position: 'fixed',
-        top: '60px',
-        right: '30px',
-        width: '380px',
-        height: '500px',
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        zIndex: '2147483647',
-        display: 'flex',
-        flexDirection: 'column'
-    });
-
-    // 标题栏
-    const titleBar = document.createElement('div');
-    Object.assign(titleBar.style, {
-        padding: '12px 16px',
-        backgroundColor: '#f8f9fa',
-        borderBottom: '1px solid #dee2e6',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        cursor: 'move',
-        borderTopLeftRadius: '8px',
-        borderTopRightRadius: '8px'
-    });
-
-    // 标题文字
-    const titleText = document.createElement('span');
-    titleText.textContent = '脚本控制台';
-    Object.assign(titleText.style, {
-        fontWeight: '600',
-        color: '#212529'
-    });
-
-    // 最小化按钮
-    const minimizeButton = document.createElement('button');
-    minimizeButton.innerHTML = '−';
-    Object.assign(minimizeButton.style, {
-        border: 'none',
-        background: 'transparent',
-        fontSize: '24px',
-        cursor: 'pointer',
-        color: '#6c757d',
-        padding: '0 8px',
-        lineHeight: '1'
-    });
-    minimizeButton.addEventListener('click', () => {
-        titleText.textContent = ''; // 隐藏标题
-        floatingWindow.style.height = '50px'; // 设置最小化高度
-        floatingWindow.style.width = '40px'; // 设置最小化宽度
-        floatingWindow.style.overflowY = 'hidden'; // 隐藏内容区域
-        contentArea.style.display = 'none'; // 隐藏内容区域
-        minimizeButton.style.display = 'none'; // 隐藏最小化按钮
-        restoreButton.style.display = 'inline-block'; // 显示恢复按钮
-    });
-
-    // 恢复按钮（初始状态为隐藏）
-    const restoreButton = document.createElement('button');
-    restoreButton.innerHTML = '+';
-    Object.assign(restoreButton.style, {
-        border: 'none',
-        background: 'transparent',
-        fontSize: '24px',
-        cursor: 'pointer',
-        color: '#6c757d',
-        padding: '0 8px',
-        lineHeight: '1',
-        display: 'none' // 初始状态为隐藏
-    });
-    restoreButton.addEventListener('click', () => {
-        titleText.textContent = '脚本控制台'; // 显示标题
-        floatingWindow.style.height = '500px'; // 恢复原始高度
-        floatingWindow.style.width = '380px'; // 恢复原始宽度
-        floatingWindow.style.overflowY = 'auto'; // 显示内容区域
-        contentArea.style.display = 'block'; // 显示内容区域
-        restoreButton.style.display = 'none'; // 隐藏恢复按钮
-        minimizeButton.style.display = 'inline-block'; // 显示最小化按钮
-    });
-
-    // 内容区域
-    const contentArea = document.createElement('div');
-    Object.assign(contentArea.style, {
-        flex: '1',
-        padding: '16px',
-        overflowY: 'auto',
-        position: 'relative'
-    });
-
-    // 组装元素
-    titleBar.appendChild(titleText);
-    titleBar.appendChild(minimizeButton);
-    titleBar.appendChild(restoreButton);
-    floatingWindow.appendChild(titleBar);
-    floatingWindow.appendChild(contentArea);
-    document.body.appendChild(floatingWindow);
-
-    // 窗口拖动功能
-    let isDragging = false;
-    let startX = 0, startY = 0, initialX = 0, initialY = 0;
-
-    titleBar.addEventListener('mousedown', e => {
-        isDragging = true;
-        startX = e.clientX;
-        startY = e.clientY;
-        const rect = floatingWindow.getBoundingClientRect();
-        initialX = rect.left;
-        initialY = rect.top;
-        floatingWindow.style.transition = 'none'; // 禁用过渡效果
-    });
-
-    document.addEventListener('mousemove', e => {
-        if (!isDragging) return;
-        const dx = e.clientX - startX;
-        const dy = e.clientY - startY;
-        floatingWindow.style.left = `${initialX + dx}px`;
-        floatingWindow.style.top = `${initialY + dy}px`;
-    });
-
-    document.addEventListener('mouseup', () => {
-        isDragging = false;
-        floatingWindow.style.transition = 'all 0.2s ease'; // 恢复过渡效果
-    });
-
-    // 示例脚本功能
-    const consoleHeader = document.createElement('div');
-    consoleHeader.textContent = '脚本输出：';
-    consoleHeader.style.fontWeight = 'bold';
-    consoleHeader.style.marginBottom = '8px';
-    contentArea.appendChild(consoleHeader);
-
-    const scriptLog = document.createElement('div');
-    scriptLog.style.color = '#495057';
-    scriptLog.textContent = '脚本已成功加载...';
-    contentArea.appendChild(scriptLog);
-
-    // 在此添加您的脚本功能
-    // 可以通过 contentArea 元素添加自定义UI组件
-    // 示例：添加一个操作按钮
-    const actionButton = document.createElement('button');
-    actionButton.textContent = '执行操作';
-    Object.assign(actionButton.style, {
-        padding: '8px 16px',
-        marginTop: '12px',
-        backgroundColor: '#007bff',
-        color: 'white',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer'
-    });
-    actionButton.addEventListener('click', () => {
-        scriptLog.textContent = '操作已执行：' + new Date().toLocaleTimeString();
-    });
-    contentArea.appendChild(actionButton);
-
-    // 保持窗口在最前
-    setInterval(() => {
-        const currentZIndex = parseInt(floatingWindow.style.zIndex);
-        if (currentZIndex < 2147483647) {
-            floatingWindow.style.zIndex = '2147483647';
-        }
-    }, 1000);
-})();
-
-
-)TAMPERMONKEY");
-
-    // 将篡改猴脚本转换为CEF字符串格式
-    cef_string_t tm_eval{};
-    func_cef_string_from_ptr(
-        tampermonkey_script.c_str(),
-        tampermonkey_script.length(),
-        &tm_eval
-    );
-    // 执行篡改猴脚本
-    frame->execute_java_script(frame, &tm_eval, &url, 0);
-    /// 如果不需要篡改猴脚本功能，可以将上面的代码删除 ///
 }
 
 // 钩子函数：hook_cef_get_load_handler
@@ -498,10 +339,22 @@ BOOL APIENTRY InstallHook() {
     // 查找CEF浏览器创建函数
     g_cef_browser_host_create_browser =
         DetourFindFunction("libcef.dll", "cef_browser_host_create_browser");
+    
+    // 检查函数是否成功找到
+    if (!g_cef_browser_host_create_browser) {
+        OutputDebugString(TEXT("Failed to find cef_browser_host_create_browser function"));
+        DetourTransactionAbort();
+        return FALSE;
+    }
 
     // 查找并钩住SetWindowDisplayAffinity函数
     g_set_window_display_affinity =
         DetourFindFunction("user32.dll", "SetWindowDisplayAffinity");
+    if (!g_set_window_display_affinity) {
+        OutputDebugString(TEXT("Failed to find SetWindowDisplayAffinity function"));
+        DetourTransactionAbort();
+        return FALSE;
+    }
     DetourAttach(&g_set_window_display_affinity, hook_set_window_display_affinity);
 
     // 根据编译环境选择适当的字符串转换函数
@@ -513,10 +366,18 @@ BOOL APIENTRY InstallHook() {
     func_cef_string_from_ptr = reinterpret_cast<cef_string_from_ptr_t>(DetourFindFunction("libcef.dll", "cef_string_ascii_to_utf16"));
 #endif
 
+    if (!func_cef_string_from_ptr) {
+        OutputDebugString(TEXT("Failed to find cef_string conversion function"));
+        DetourTransactionAbort();
+        return FALSE;
+    }
+
     // 钩住CEF浏览器创建函数
     DetourAttach(&g_cef_browser_host_create_browser, (PVOID)hook_cef_browser_host_create_browser);
+    
     // 提交所有Detours事务，返回是否成功
-    return DetourTransactionCommit() == NO_ERROR;
+    LONG result = DetourTransactionCommit();
+    return result == NO_ERROR;
 }
 
 // 线程处理函数：用于初始化钩子
@@ -530,9 +391,11 @@ DWORD WINAPI ThreadProc(LPVOID lpThreadParameter)
     );
 
     if (hProcess) {
-        // 在特定内存地址写入NOP指令（用于绕过某些保护）
+        // 移除或注释掉固定地址内存修改，因为这可能是异常的原因
+        /*
         BYTE nopPatch[] = { 0x90, 0x90, 0x90, 0x90 };  // NOP指令，用于跳过代码
         WriteProcessMemory(hProcess, (LPVOID)0x00401000, nopPatch, sizeof(nopPatch), NULL);
+        */
         CloseHandle(hProcess);
     }
 

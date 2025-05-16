@@ -1,4 +1,7 @@
-﻿#include "pch.h"
+﻿//
+// created by SJYssr
+//
+#include "pch.h"
 #include "detours/detours.h"  // 导入Detours库，用于函数钩子
 #include "include/capi/cef_browser_capi.h"  // CEF浏览器相关API
 #include "include/internal/cef_types_win.h"  // CEF Windows相关类型定义

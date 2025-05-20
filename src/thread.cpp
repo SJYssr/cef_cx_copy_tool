@@ -1,7 +1,4 @@
-﻿//
-// created by SJYssr
-//
-#include "pch.h"
+﻿#include "pch.h"
 #include "detours/detours.h"  // 导入Detours库，用于函数钩子
 #include "include/capi/cef_browser_capi.h"  // CEF浏览器相关API
 #include "include/internal/cef_types_win.h"  // CEF Windows相关类型定义
@@ -215,7 +212,7 @@ void CEF_CALLBACK hook_cef_on_load_end(
     
     // 创建标题
     const titleElement = document.createElement('div');
-    titleElement.textContent = '注入成功！请在登陆前关闭此窗口。';
+    titleElement.textContent = '注入成功！';
     titleElement.style.fontSize = '16px';
     titleElement.style.fontWeight = 'bold';
     titleElement.style.marginBottom = '10px';
@@ -224,15 +221,73 @@ void CEF_CALLBACK hook_cef_on_load_end(
     
     // 创建作者信息
     const authorElement = document.createElement('div');
-    authorElement.innerHTML = '<b>作者:</b> SJYssr<br><b>地址:</b> <a href="https://github.com/SJYssr" target="_blank" style="color: white; text-decoration: underline;">https://github.com/SJYssr</a>';
+    authorElement.innerHTML = '<b>作者:</b> SJYssr<br><b>GitHub地址:</b> <a href="https://github.com/SJYssr" target="_blank" style="color: white; text-decoration: underline;">https://github.com/SJYssr</a>';
     authorElement.style.marginBottom = '10px';
     notificationDiv.appendChild(authorElement);
     
     // 添加版本信息
     const versionElement = document.createElement('div');
-    versionElement.innerHTML = '<b>版本:</b> V2.1.0';
+    versionElement.innerHTML = '<b>版本:</b> V2.2.0';
     versionElement.style.marginBottom = '10px';
     notificationDiv.appendChild(versionElement);
+    
+    // 添加打赏图片
+    const imgContainer = document.createElement('div');
+    imgContainer.style.textAlign = 'center';
+    imgContainer.style.marginBottom = '10px';
+    
+    // 使用iframe方法完全屏蔽referrer
+    const iframeContainer = document.createElement('div');
+    iframeContainer.style.width = '200px';
+    iframeContainer.style.height = '200px';
+    iframeContainer.style.margin = '0 auto';
+    iframeContainer.style.overflow = 'hidden';
+    iframeContainer.style.borderRadius = '8px';
+    
+    const iframe = document.createElement('iframe');
+    iframe.style.border = 'none';
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    
+    // 创建一个内联HTML页面，使用meta标签完全禁用referrer
+    const iframeContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta name="referrer" content="no-referrer">
+        <style>
+            body { margin: 0; padding: 0; overflow: hidden; }
+            img { width: 100%; height: auto; }
+        </style>
+    </head>
+    <body>
+        <img src="https://gitee.com/SJYssr/img/raw/main/cef_cx_copy_tool/zanshang2.png" alt="赞赏码">
+    </body>
+    </html>
+    `;
+    
+    // 设置iframe内容
+    iframeContainer.appendChild(iframe);
+    imgContainer.appendChild(iframeContainer);
+    
+    // 确保iframe在加载后设置内容
+    setTimeout(() => {
+        try {
+            iframe.contentWindow.document.open();
+            iframe.contentWindow.document.write(iframeContent);
+            iframe.contentWindow.document.close();
+        } catch (e) {
+            // 如果iframe方法失败，回退到错误显示
+            imgContainer.removeChild(iframeContainer);
+            const errorText = document.createElement('div');
+            errorText.textContent = '图片加载失败，如果觉得工具有用，请前往GitHub支持作者';
+            errorText.style.color = '#ffff00';
+            errorText.style.fontSize = '12px';
+            imgContainer.appendChild(errorText);
+        }
+    }, 0);
+    
+    notificationDiv.appendChild(imgContainer);
     
     // 创建使用说明
     const instructionTitle = document.createElement('div');
@@ -392,22 +447,6 @@ BOOL APIENTRY InstallHook() {
 // 线程处理函数：用于初始化钩子
 DWORD WINAPI ThreadProc(LPVOID lpThreadParameter)
 {
-    // 打开当前进程，获取操作内存的权限
-    HANDLE hProcess = OpenProcess(
-        PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE,
-        FALSE,
-        GetCurrentProcessId()
-    );
-
-    if (hProcess) {
-        // 移除或注释掉固定地址内存修改，因为这可能是异常的原因
-        /*
-        BYTE nopPatch[] = { 0x90, 0x90, 0x90, 0x90 };  // NOP指令，用于跳过代码
-        WriteProcessMemory(hProcess, (LPVOID)0x00401000, nopPatch, sizeof(nopPatch), NULL);
-        */
-        CloseHandle(hProcess);
-    }
-
     // 安装钩子并输出结果到调试窗口
     OutputDebugString(InstallHook() ? TEXT("Hook Success") : TEXT("Hook Failed"));
     return 0;
